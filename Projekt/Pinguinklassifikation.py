@@ -13,13 +13,12 @@ import csv
 from dash_iconify import DashIconify
 import Modell
 
-app = Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
-
+#dies sind alle global notwendigen Variablen
 columns = ["island", "bill_length_mm", "bill_depth_mm", "flipper_length_mm", "body_mass_g", "sex", "year","Beobachter"]
 og_penguins = pd.read_csv('penguins.csv')
-#user = pd.read_csv(r'D:\PyCharm\Übung\Benutzer.csv')
 m = Modell.Modell()
 
+#Hier werden alle Icons für die Buttons erstellt
 start_icon = DashIconify(icon="bi:play-circle", style={"marginRight": 5})
 import_icon = DashIconify(icon="bi:file-earmark-arrow-up", style={"marginRight": 5})
 delete_icon = DashIconify(icon="bi:trash", style={"marginRight": 5})
@@ -29,6 +28,8 @@ redo_icon = DashIconify(icon="bi:arrow-repeat", style={"marginRight": 5})
 safe_icon = DashIconify(icon="bi:file-earmark-lock", style={"marginRight": 5})
 switch_icon = DashIconify(icon="bi:arrow-left-right", style={"marginRight": 5})
 
+#Hier wird das Layout der App erstellt und verwaltet
+app = Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.layout = dbc.Container([
     html.Div([
         html.H2(children='Pinguinklassifikator', style={'textAlign': 'center'}),
@@ -63,7 +64,7 @@ app.layout = dbc.Container([
                         ]
         ),
             dbc.Col([dcc.Tabs(id='tabs-1', value='tab-1', style={'backgroundColor': '#fcfcfc'},
-                     children=[dcc.Tab(label='Body', value='tab-1'),dcc.Tab(label='Body', value='tab-2'), dcc.Tab(label='Bill', value='tab-3')]),
+                     children=[dcc.Tab(label='Schnabelstruktur', value='tab-1'),dcc.Tab(label='Körperstruktur', value='tab-2'), dcc.Tab(label='Körpermaße', value='tab-3')]),
                      html.Div(id='tabs-content')
                      ])
         ]),
@@ -80,6 +81,8 @@ app.layout = dbc.Container([
         ])
     ])
 ])
+
+#hier werden alle Grafiken erstellt und die Auswahl über die Tabs verwaltet
 @callback(
 Output('tabs-content', 'children'),
 Input('tabs-1', 'value'),
@@ -109,32 +112,30 @@ def render(tab,in1,in2,in3,in4,in5,in6,in7,in8):
 
     if tab == 'tab-1':
         return html.Div([
-            html.Div(style={'backgroundColor': '#fcfcfc'}, children='body_structure'),
             dcc.Graph(
-                id='body_structure',
+                id='bill_structure',
                 style={'backgroundColor': '#fcfcfc'},
                 figure=fig1
             )
         ])
     elif tab == 'tab-2':
         return html.Div([
-            html.Div(style={'backgroundColor': '#fcfcfc'}, children='bill_structure'),
             dcc.Graph(
-                id='bill_structure',
+                id='body_structure',
                 style={'backgroundColor': '#fcfcfc'},
                 figure=fig2
             )
         ])
     elif tab == 'tab-3':
         return html.Div([
-            html.Div(style={'backgroundColor': '#fcfcfc'}, children='bill_structure'),
             dcc.Graph(
-                id='bill_structure',
+                id='body_measurement',
                 style={'backgroundColor': '#fcfcfc'},
                 figure=fig3
             )
         ])
 
+#hier wird die Funktionalität aller Buttons gesteuert. Jeder Button hat eine eigene ihm zugeordnete Funktion, wenn komplexere Vorgänge notwendig sind
 @callback(
     Output('Infos', 'children'),
     Output('Ergebnis', 'children'),
@@ -167,14 +168,26 @@ def render(tab,in1,in2,in3,in4,in5,in6,in7,in8):
 def Click(btn1, btn2, btn3, btn5, btn6, btn7, btn8, erg, in1, in2, in3, in4, in5, in6, in7, in8):
     msg = " "
     if "berechnen" == ctx.triggered_id:
-        erg = berechnung(in1,in2,in3,in4,in5,in6,in7,in8)
-        msg = "Die Berechnung wurde erfolgreich durchgeführt."
+        arr = berechnung( in1,in2,in3,in4,in5,in6,in7,in8)
+        erg = arr[1]
+        msg = arr[0]
         return (msg, erg, in1,in2,in3,in4,in5,in6,in7,in8)
     elif "importieren" == ctx.triggered_id:
-        data_dict = getCase()
-        msg = "Die Daten wurden importiert"
-        (island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, sex, year,
-         Beobachter) = (data_dict[key][0] for key in columns)
+        arr = getCase()
+        data_dict = arr[1]
+        if data_dict == {}:
+            (island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, sex, year,
+             Beobachter) = ("Torgersen", "", "", "", "", "male", "", "")
+            msg = arr[0]
+        else:
+            try:
+                (island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, sex, year,
+                 Beobachter) = (data_dict[key][0] for key in columns)
+                msg = arr[0]
+            except:
+                (island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, sex, year,
+                 Beobachter) =  ("Torgersen", "", "", "", "", "male", "", "")
+                msg = "Die Datei ist nicht für den Import geeignet. Bitte wähle eine gültige Datei aus!"
         return (msg,"", island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, sex, year, Beobachter)
     elif "löschen" == ctx.triggered_id:
         return (msg, "", "Torgersen", "", "", "", "", "male", "", "")
@@ -182,7 +195,7 @@ def Click(btn1, btn2, btn3, btn5, btn6, btn7, btn8, erg, in1, in2, in3, in4, in5
         msg = safeCase(btn5, erg[0], in1,in2,in3,in4,in5,in6,in7,in8)
         return (msg,erg,in1,in2,in3,in4,in5,in6,in7,in8)
     elif "aktualisieren" == ctx.triggered_id:
-        msg = akt(erg[0], in1,in2,in3,in4,in5,in6,in7,in8)
+        msg = akt(erg, in1,in2,in3,in4,in5,in6,in7,in8)
         return (msg,erg,in1,in2,in3,in4,in5,in6,in7,in8)
     elif "modell_speichern" == ctx.triggered_id:
         msg = modell_speichern()
@@ -192,31 +205,40 @@ def Click(btn1, btn2, btn3, btn5, btn6, btn7, btn8, erg, in1, in2, in3, in4, in5
         return (msg,erg,in1,in2,in3,in4,in5,in6,in7,in8)
     return (msg, erg, in1,in2,in3,in4,in5,in6,in7,in8)
 
-
+#Diese Funktion verwaltet die Berechnung
 def berechnung(*vals):
+        ergebnis = ""
         try:
             daten=pd.DataFrame(data=[[val for val in vals]], columns=columns)
             daten.drop(columns='Beobachter', inplace=True)
             daten_scaled = m.scale_columns(m.vorbereitung(daten))
-            ergebnis = m.vorhersage(daten_scaled)
-            return ergebnis
-        except Exception as e:
-            return "Bitte prüfe deine Eingaben! Tipp: Führe zuerst die Berechnung durch."
+            try:
+                ergebnis = m.vorhersage(daten_scaled)
+                msg = "Die Berechnung wurde erfolgreich durchgeführt."
+            except:
+                msg = ("Das Modell konnte keine Vorhersage treffen. "
+                        "Für Technische Probleme melde dich unter: katharina-maria.reichwein@iu-study.org")
+        except:
+            msg = "Bitte prüfe deine Eingaben!"
+        return [msg, ergebnis]
 
-
+#Diese Funktion verwaltet den Import eines Falles als CSV
 def getCase():
     filepath = filedialog.askopenfilename(title="Wähle einen Einzelfall",
                                           filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")])
+    case = {}
     if not filepath:
-        return
+        msg = "Bitte wähle eine gültige Datei aus!"
     else:
         try:
             case_df = pd.read_csv(filepath, sep=",",)
             case = case_df.to_dict()
-            return case
+            msg = "Die Daten wurden importiert."
         except:
-            return
+            msg = "Die Datei konnte nicht geladen werden. Bitte wähle eine gültige Datei aus!"
+    return [msg, case]
 
+#Diese Funktion verwaltet das Speichern eines Falles als CSV
 def safeCase(btn_5, *vals):
     msg = ""
     if btn_5 > 0:
@@ -233,38 +255,48 @@ def safeCase(btn_5, *vals):
             msg = "Die Berechnung wurde gespeichert."
 
         except:
-            msg = "Die Berechnung konnte nicht gespeichert werden."
+            msg = "Die Berechnung konnte nicht gespeichert werden. Bitte prüfe deine Eingaben!"
 
     else:
         msg = "Du hast den falschen Button betätigt."
     return msg
 
+#Diese Funktion verwaltet das aktualisieren des Modells
 def akt(erg, *vals):
     try:
         daten = pd.DataFrame(data=[[val for val in vals]], columns=columns)
         daten.drop(columns='Beobachter', inplace=True)
-        daten_scaled = m.scale_columns(m.vorbereitung(daten))
-        m.modell_aktualisierung(erg, daten_scaled)
+        m.modell_aktualisierung(erg, daten)
         msg = "Das Modell wurde um den eingegebenen Pinguin erweitert."
-    except Exception as e:
-        msg = "Bitte prüfe deine Eingaben!"
+    except:
+        msg = ("Das Modell konnte nicht aktualisiert werden."
+                        "Für Technische Probleme melde dich unter: katharina-maria.reichwein@iu-study.org")
     return msg
 
+#Diese Funktion verwaltet das Speichern des Modells
 def modell_speichern():
-    filepath = filedialog.asksaveasfilename(title="Wähle einen Speicherort",
-                                            filetypes=[("PKL Files", "*.pkl"), ("All Files", "*.*")],
-                                            initialfile="neues_Modell.pkl")
-    m.modell_speichern(filepath)
-    return "Das Modell wurde gespeichert."
+    try:
+        filepath = filedialog.asksaveasfilename(title="Wähle einen Speicherort",
+                                                filetypes=[("PKL Files", "*.pkl"), ("All Files", "*.*")],
+                                                initialfile="neues_Modell.pkl")
+        m.modell_speichern(filepath)
+        return "Das Modell wurde gespeichert."
+    except:
+        return "Bitte wähle einen gültigen Speicherort aus!"
 
+
+#Diese Funktion verwaltet den Wechsel eines Modells zu einem anderen
 def modell_wechseln():
     filepath = filedialog.askopenfilename(title="Wähle ein Modell",
                                           filetypes=[("PKL Files", "*.pkl"), ("All Files", "*.*")])
     if not filepath:
         return "Bitte wähle eine gültige Datei aus!"
     else:
-        m.modell_wechseln(filepath)
-        return "Das Modell wurde gewechselt."
+        try:
+            m.modell_wechseln(filepath)
+            return "Das Modell wurde gewechselt."
+        except:
+            return "Bitte wähle eine gültige Datei aus!"
 
 if __name__ == '__main__':
     app.run(debug=True)
