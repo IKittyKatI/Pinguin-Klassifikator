@@ -1,0 +1,7 @@
+pandas
+ibm-db
+numpy
+scikit-learn
+dash
+dash_bootstrap_components
+xmltodict
