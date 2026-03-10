@@ -1,22 +1,74 @@
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 import plotly.express as px
 from dash import Dash, dcc, html, Input, Output, callback, ctx, State
 import dash_bootstrap_components as dbc
-from sklearn.cluster import KMeans
-from sklearn.linear_model import SGDClassifier
-from sklearn.preprocessing import minmax_scale
-from sklearn.neighbors import KNeighborsClassifier
-from tkinter import filedialog
-import csv
 from dash_iconify import DashIconify
-import Modell
+from sklearn.preprocessing import minmax_scale
+from sklearn.linear_model import RidgeClassifier
+import joblib
+import pandas as pd
 
-#dies sind alle global notwendigen Variablen
+# Hier wird das Klassifikationsmodell verwaltet.
+class Modell:
+
+    # alle Variablen die innerhalb der Klasse genutzt werden, werden vorbereitet
+    def __init__(self):
+        self.penguins = pd.read_csv('penguins.csv')
+        self.labels = pd.DataFrame()
+        self.prep_penguins()
+        self.modell = joblib.load("modell.pkl")
+        self.penguins_scaled = self.scale_columns(self.vorbereitung(self.penguins))
+        self.penguins_new = self.penguins_scaled
+
+    # der initiale Dataframe mit den Palmer Pinguinen wird vorbereitet
+    def prep_penguins(self):
+        self.penguins.drop(columns='rowid', inplace=True)
+        self.penguins.dropna(inplace=True)
+        self.labels = pd.DataFrame({'labels': self.penguins['species'].copy()})
+        self.penguins.drop(columns='species', inplace=True)
+        # replace_dict = {'Torgersen': 0, 'Biscoe': 0.5, 'Dream': 1, 'male': 0, 'female': 1}
+        self.vorbereitung(self.penguins)
+
+    # Dataframes werden für die KI Modelle vorbereitet
+    def vorbereitung(self, df):
+        df.replace(to_replace='Torgersen', value=0, inplace=True)
+        df.replace(to_replace='Biscoe', value=0.5, inplace=True)
+        df.replace(to_replace='Dream', value=1, inplace=True)
+
+        df.replace(to_replace='male', value=0, inplace=True)
+        df.replace(to_replace='female', value=1, inplace=True)
+        return df
+
+    # Normalisierung
+    def scale_columns(self, df):
+        for col in df.columns:
+            df[col] = minmax_scale(df[col])
+            return df
+
+    # Funkltion zum externen Aufruf der predict Methode
+    def vorhersage(self, df):
+        return self.modell.predict(df)
+
+    # Modell aktualisieren, in dem der neue Dataframe zu den Trainingsdaten hinzugefügt wird.
+    def modell_aktualisierung(self, erg, df):
+        self.vorbereitung(df)
+        self.penguins_new = pd.concat([self.penguins_new, df], ignore_index=True)
+        lb = pd.DataFrame.from_dict({"labels": erg})
+        self.labels = pd.concat([self.labels, lb], ignore_index=True)
+        ridge = RidgeClassifier()
+        self.modell = ridge.fit(self.penguins_new, self.labels['labels'])
+
+    # bestehendes Modell abspeichern
+    def modell_speichern(self, name):
+        joblib.dump(self.modell, name)
+
+    # neues Modell einstellen
+    def modell_wechseln(self, name):
+        self.modell = joblib.load(name)
+
+#Hier sind alle global notwendigen Variablen
 columns = ["island", "bill_length_mm", "bill_depth_mm", "flipper_length_mm", "body_mass_g", "sex", "year","Beobachter"]
 og_penguins = pd.read_csv('penguins.csv')
-m = Modell.Modell()
+m = Modell()
 
 #Hier werden alle Icons für die Buttons erstellt
 start_icon = DashIconify(icon="bi:play-circle", style={"marginRight": 5})
@@ -42,7 +94,8 @@ app.layout = dbc.Container([
             dbc.Col(dbc.Button(children= [delete_icon,'Löschen'], id='löschen',
                                n_clicks=0, style={'textAlign': 'center'})),
             dbc.Col(dbc.Button(children= [download_icon,'Speichern'], id='speichern',
-                               n_clicks=0, style={'textAlign': 'center'}))
+                               n_clicks=0, style={'textAlign': 'center'})),
+            dbc.Col(dcc.Download(id="download-dataframe-csv"))
             ],
             justify="center"),
         html.Br(),
@@ -78,7 +131,19 @@ app.layout = dbc.Container([
                                n_clicks=0, style={'textAlign': 'center'})),
             dbc.Col(dbc.Button(children=[switch_icon, 'Modell wechseln'], id='modell_wechseln',
                                n_clicks=0, style={'textAlign': 'center'}))
-        ])
+        ]),
+        html.Br(),
+        html.Div([dcc.Upload(id='upload', children=html.Div(['Upload per Drag & Drop oder hier eine ', html.A('Datei Auswählen')]),
+                             style={
+                                 'width': '100%',
+                                 'height': '60px',
+                                 'lineHeight': '60px',
+                                 'borderWidth': '1px',
+                                 'borderStyle': 'dashed',
+                                 'borderRadius': '5px',
+                                 'textAlign': 'center',
+                                 'margin': '10px'})
+                  ]),
     ])
 ])
 
@@ -155,6 +220,7 @@ def render(tab,in1,in2,in3,in4,in5,in6,in7,in8):
     Input('aktualisieren', 'n_clicks'),
     Input('modell_speichern', 'n_clicks'),
     Input('modell_wechseln', 'n_clicks'),
+    State('upload','filename'),
     State('Ergebnis', 'children'),
     State('input1','value'),
     State('input2', 'value'),
@@ -165,15 +231,15 @@ def render(tab,in1,in2,in3,in4,in5,in6,in7,in8):
     State('input7','value'),
     State('input8','value')
 )
-def Click(btn1, btn2, btn3, btn5, btn6, btn7, btn8, erg, in1, in2, in3, in4, in5, in6, in7, in8):
+def Click(btn1, btn2, btn3, btn5, btn6, btn7, btn8, filename, erg, in1, in2, in3, in4, in5, in6, in7, in8):
     msg = " "
     if "berechnen" == ctx.triggered_id:
-        arr = berechnung( in1,in2,in3,in4,in5,in6,in7,in8)
+        arr = berechnung(in1,in2,in3,in4,in5,in6,in7,in8)
         erg = arr[1]
         msg = arr[0]
         return (msg, erg, in1,in2,in3,in4,in5,in6,in7,in8)
     elif "importieren" == ctx.triggered_id:
-        arr = getCase()
+        arr = getCase(filename)
         data_dict = arr[1]
         if data_dict == {}:
             (island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, sex, year,
@@ -192,7 +258,7 @@ def Click(btn1, btn2, btn3, btn5, btn6, btn7, btn8, erg, in1, in2, in3, in4, in5
     elif "löschen" == ctx.triggered_id:
         return (msg, "", "Torgersen", "", "", "", "", "male", "", "")
     elif "speichern" == ctx.triggered_id:
-        msg = safeCase(btn5, erg[0], in1,in2,in3,in4,in5,in6,in7,in8)
+        msg = safeCase(btn5)
         return (msg,erg,in1,in2,in3,in4,in5,in6,in7,in8)
     elif "aktualisieren" == ctx.triggered_id:
         msg = akt(erg, in1,in2,in3,in4,in5,in6,in7,in8)
@@ -201,7 +267,7 @@ def Click(btn1, btn2, btn3, btn5, btn6, btn7, btn8, erg, in1, in2, in3, in4, in5
         msg = modell_speichern()
         return (msg,erg,in1,in2,in3,in4,in5,in6,in7,in8)
     elif "modell_wechseln" == ctx.triggered_id:
-        msg = modell_wechseln()
+        msg = modell_wechseln(filename)
         return (msg,erg,in1,in2,in3,in4,in5,in6,in7,in8)
     return (msg, erg, in1,in2,in3,in4,in5,in6,in7,in8)
 
@@ -222,46 +288,56 @@ def berechnung(*vals):
             msg = "Bitte prüfe deine Eingaben!"
         return [msg, ergebnis]
 
-#Diese Funktion verwaltet den Import eines Falles als CSV
-def getCase():
-    filepath = filedialog.askopenfilename(title="Wähle einen Einzelfall",
-                                          filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")])
+
+#Diese Funktion verwaltet den Import der hochgeladenen Daten als CSV
+def getCase(filename):
     case = {}
-    if not filepath:
-        msg = "Bitte wähle eine gültige Datei aus!"
+    if not filename:
+        msg = "Bitte lade zuerst eine .csv Datei hoch!"
     else:
         try:
-            case_df = pd.read_csv(filepath, sep=",",)
+            case_df = pd.read_csv(filename, sep=",",)
             case = case_df.to_dict()
             msg = "Die Daten wurden importiert."
         except:
-            msg = "Die Datei konnte nicht geladen werden. Bitte wähle eine gültige Datei aus!"
+            msg = "Die Datei konnte nicht geladen werden. Bitte wähle eine gültige .csv Datei aus!"
     return [msg, case]
 
 #Diese Funktion verwaltet das Speichern eines Falles als CSV
-def safeCase(btn_5, *vals):
+def safeCase(btn_5):
     msg = ""
     if btn_5 > 0:
-        try:
-            filepath = filedialog.asksaveasfilename(title="Wähle einen Speicherort",
-                                                    filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
-                                                    initialfile="neuer_Pinguin.csv" )
-            columns.insert(0,"species")
-            data = [columns,  vals]
-            with open(filepath, mode="w", newline="", encoding="utf-8") as file:
-                writer = csv.writer(file)
-                writer.writerows(data)
-            columns.pop(0)
-            msg = "Die Berechnung wurde gespeichert."
-
-        except:
-            msg = "Die Berechnung konnte nicht gespeichert werden. Bitte prüfe deine Eingaben!"
-
+        msg = "Die eingegebenen Daten wurden als neuer_Pinguin.csv gespeichert."
     else:
         msg = "Du hast den falschen Button betätigt."
     return msg
 
-#Diese Funktion verwaltet das aktualisieren des Modells
+#hier wird die Antwort an das Download-Element aus der App verwaltet
+@callback(
+    Output("download-dataframe-csv", "data"),
+    Input("speichern", "n_clicks"),
+    State('Ergebnis', 'children'),
+    State('input1', 'value'),
+    State('input2', 'value'),
+    State('input3', 'value'),
+    State('input4', 'value'),
+    State('input5', 'value'),
+    State('input6', 'value'),
+    State('input7', 'value'),
+    State('input8', 'value'),
+    prevent_initial_call=True
+)
+def func(n_clicks, *vals):
+    try:
+        columns.insert(0, "species")
+        data = pd.DataFrame(data=[[val for val in vals]], columns=columns)
+        columns.pop(0)
+
+        return dcc.send_data_frame(data.to_csv, "neuer_Pinguin.csv")
+    except:
+        return Dash.no_update
+
+#Diese Funktion verwaltet das Aktualisieren des Modells
 def akt(erg, *vals):
     try:
         daten = pd.DataFrame(data=[[val for val in vals]], columns=columns)
@@ -276,27 +352,56 @@ def akt(erg, *vals):
 #Diese Funktion verwaltet das Speichern des Modells
 def modell_speichern():
     try:
-        filepath = filedialog.asksaveasfilename(title="Wähle einen Speicherort",
-                                                filetypes=[("PKL Files", "*.pkl"), ("All Files", "*.*")],
-                                                initialfile="neues_Modell.pkl")
-        m.modell_speichern(filepath)
+        m.modell_speichern("neues_Modell")
         return "Das Modell wurde gespeichert."
     except:
         return "Bitte wähle einen gültigen Speicherort aus!"
 
 
 #Diese Funktion verwaltet den Wechsel eines Modells zu einem anderen
-def modell_wechseln():
-    filepath = filedialog.askopenfilename(title="Wähle ein Modell",
-                                          filetypes=[("PKL Files", "*.pkl"), ("All Files", "*.*")])
-    if not filepath:
-        return "Bitte wähle eine gültige Datei aus!"
+def modell_wechseln(filename):
+    if not filename:
+        return "Bitte wähle eine gültige Datei im .pkl Format aus!"
     else:
         try:
-            m.modell_wechseln(filepath)
+            m.modell_wechseln(filename)
             return "Das Modell wurde gewechselt."
         except:
-            return "Bitte wähle eine gültige Datei aus!"
+            return "Bitte wähle eine gültige Datei im .pkl Format aus!"
 
 if __name__ == '__main__':
+    #Dashboard
     app.run(debug=True)
+
+    #Genauigkeitstest der verschiedenen Modelle testen
+    #M = Modell()
+    #X,y = M.penguins, M.labels
+    #X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=42)
+
+
+    #knn=KNeighborsClassifier(algorithm='brute', n_neighbors=5)
+    #knn.fit(X_train, y_train['labels'])
+    #bernoulliNB = BernoulliNB()
+    #bernoulliNB.fit(X_train, y_train['labels'])
+    #ridge = RidgeClassifier()
+    #ridge.fit(X, y['labels'])
+
+    #def accuracy(modell):
+    #    arr = modell.predict(X_test)
+    #    korr = 0
+    #    falsch = 0
+    #    for i in range(len(y_test['labels'])):
+    #        if arr[i] == y_test['labels'].iloc[i]:
+    #            korr += 1
+    #        else:
+    #            falsch += 1
+    #    return 'korrekt:' + str(korr) +  ' ,falsch:' + str(falsch)
+
+    #print('Genauigkeit KNN')
+    #print(accuracy(knn))
+
+    #print('Genauigkeit Naive Bayes')
+    #print(accuracy(bernoulliNB))
+
+    #print('Genauigkeit Ridge')
+    #print(accuracy(ridge))

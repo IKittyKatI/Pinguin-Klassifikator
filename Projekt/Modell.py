@@ -1,14 +1,9 @@
-import numpy as np
-import pandas
 import pandas as pd
-from sklearn.metrics import rand_score
 from sklearn.preprocessing import minmax_scale
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.naive_bayes import BernoulliNB
 from sklearn.linear_model import RidgeClassifier
 import joblib
 
+#Hier wird das Klassifikationsmodell verwaltet.
 class Modell:
 
     #alle Variablen die innerhalb der Klasse genutzt werden, werden vorbereitet
