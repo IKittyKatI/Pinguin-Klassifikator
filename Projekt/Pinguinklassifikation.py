@@ -9,6 +9,7 @@ from sklearn.linear_model import RidgeClassifier
 import joblib
 import pandas as pd
 import io
+from pathlib import Path
 
 # Hier wird das Klassifikationsmodell verwaltet.
 class Modell:
@@ -62,7 +63,8 @@ class Modell:
 
     # bestehendes Modell abspeichern
     def modell_speichern(self, name):
-        joblib.dump(self.modell, name)
+        path = str(Path.home() / "Downloads")+ "//" + name  + ".pkl"
+        joblib.dump(self.modell, path)
 
     # neues Modell einstellen
     def modell_wechseln(self, name):
