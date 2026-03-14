@@ -1,3 +1,5 @@
+import base64
+
 import plotly.express as px
 from dash import Dash, dcc, html, Input, Output, callback, ctx, State
 import dash_bootstrap_components as dbc
@@ -6,6 +8,7 @@ from sklearn.preprocessing import minmax_scale
 from sklearn.linear_model import RidgeClassifier
 import joblib
 import pandas as pd
+import io
 
 # Hier wird das Klassifikationsmodell verwaltet.
 class Modell:
@@ -108,7 +111,7 @@ app.layout = dbc.Container([
                         dbc.Input(id="input4", placeholder="Flossenlänge in cm", type ='number'),
                         dbc.Input(id="input5", placeholder="Gewicht in g", type ='number'),
                         dcc.Dropdown(options =["male", "female"], value="male", id="input6"),
-                        dbc.Input(id="input7", placeholder="Jahr (JJJJ)", type ='text'),
+                        dbc.Input(id="input7", placeholder="Jahr (JJJJ)", type ='number'),
                         dbc.Input(id="input8", placeholder="Beobachter", type ='text'),
                         html.Br(),
                         html.H6(children='Ermittelte Spezies:', style={'textAlign': 'left'}),
@@ -144,6 +147,7 @@ app.layout = dbc.Container([
                                  'textAlign': 'center',
                                  'margin': '10px'})
                   ]),
+        html.Div(id = 'file_in_upload', children=[''])
     ])
 ])
 
@@ -221,6 +225,7 @@ def render(tab,in1,in2,in3,in4,in5,in6,in7,in8):
     Input('modell_speichern', 'n_clicks'),
     Input('modell_wechseln', 'n_clicks'),
     State('upload','filename'),
+    State('upload', 'contents'),
     State('Ergebnis', 'children'),
     State('input1','value'),
     State('input2', 'value'),
@@ -231,15 +236,15 @@ def render(tab,in1,in2,in3,in4,in5,in6,in7,in8):
     State('input7','value'),
     State('input8','value')
 )
-def Click(btn1, btn2, btn3, btn5, btn6, btn7, btn8, filename, erg, in1, in2, in3, in4, in5, in6, in7, in8):
+def Click(btn1, btn2, btn3, btn5, btn6, btn7, btn8, filename, contents, erg, in1, in2, in3, in4, in5, in6, in7, in8):
     msg = " "
     if "berechnen" == ctx.triggered_id:
-        arr = berechnung(in1,in2,in3,in4,in5,in6,in7,in8)
+        arr = berechnung(in1, in2, in3, in4, in5, in6, in7, in8)
         erg = arr[1]
         msg = arr[0]
         return (msg, erg, in1,in2,in3,in4,in5,in6,in7,in8)
     elif "importieren" == ctx.triggered_id:
-        arr = getCase(filename)
+        arr = getCase(filename, contents)
         data_dict = arr[1]
         if data_dict == {}:
             (island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, sex, year,
@@ -272,36 +277,52 @@ def Click(btn1, btn2, btn3, btn5, btn6, btn7, btn8, filename, erg, in1, in2, in3
     return (msg, erg, in1,in2,in3,in4,in5,in6,in7,in8)
 
 #Diese Funktion verwaltet die Berechnung
-def berechnung(*vals):
-        ergebnis = ""
+def berechnung(in1, in2, in3, in4, in5, in6, in7, in8):
+    val = [in1, in2, in3, in4, in5, in6, in7, in8]
+    data = [val]
+    ergebnis = ""
+    try:
+        eingabe=pd.DataFrame(data=data, columns=columns)
+        eingabe.drop(columns='Beobachter', inplace=True)
+        daten_scaled = m.scale_columns(m.vorbereitung(eingabe))
         try:
-            daten=pd.DataFrame(data=[[val for val in vals]], columns=columns)
-            daten.drop(columns='Beobachter', inplace=True)
-            daten_scaled = m.scale_columns(m.vorbereitung(daten))
-            try:
-                ergebnis = m.vorhersage(daten_scaled)
-                msg = "Die Berechnung wurde erfolgreich durchgeführt."
-            except:
-                msg = ("Das Modell konnte keine Vorhersage treffen. "
-                        "Für Technische Probleme melde dich unter: katharina-maria.reichwein@iu-study.org")
+            ergebnis = m.vorhersage(daten_scaled)
+            msg = "Die Berechnung wurde erfolgreich durchgeführt."
         except:
-            msg = "Bitte prüfe deine Eingaben!"
-        return [msg, ergebnis]
+            msg = ("Das Modell konnte keine Vorhersage treffen. "
+                    "Für Technische Probleme melde dich unter: katharina-maria.reichwein@iu-study.org")
+    except:
+        msg = "Bitte prüfe deine Eingaben!"
+    return [msg, ergebnis]
 
 
 #Diese Funktion verwaltet den Import der hochgeladenen Daten als CSV
-def getCase(filename):
+def getCase(filename, contents):
     case = {}
-    if not filename:
+    if not filename or not contents:
         msg = "Bitte lade zuerst eine .csv Datei hoch!"
     else:
-        try:
-            case_df = pd.read_csv(filename, sep=",",)
+        if "csv" in filename:
+            content_type, content_string = contents.split(',')
+            decoded = base64.b64decode(content_string)
+
+            case_df = pd.read_csv(io.StringIO(decoded.decode('utf-8')))
             case = case_df.to_dict()
             msg = "Die Daten wurden importiert."
-        except:
-            msg = "Die Datei konnte nicht geladen werden. Bitte wähle eine gültige .csv Datei aus!"
+        else:
+            msg = "Die Datei konnte nicht geladen werden. Bitte wähle eine .csv Datei aus!"
     return [msg, case]
+
+
+@callback(
+    Output("file_in_upload", "children"),
+    Input("upload", "filename")
+)
+def download(filename):
+    msg = ""
+    if not filename is None:
+        msg = "Die Datei \"" + filename + "\" befindet sich im Upload"
+    return msg
 
 #Diese Funktion verwaltet das Speichern eines Falles als CSV
 def safeCase(btn_5):
@@ -327,20 +348,26 @@ def safeCase(btn_5):
     State('input8', 'value'),
     prevent_initial_call=True
 )
-def func(n_clicks, *vals):
-    try:
+def download(n_clicks, erg, in1, in2, in3, in4, in5, in6, in7, in8):
+    if erg[0] == "":
+        vals = ("bisher wurde keine Vorhersage getroffen", in1, in2, in3, in4, in5, in6, in7, in8)
+    else:
+        vals = (erg[0], in1, in2, in3, in4, in5, in6, in7, in8)
+    data = [vals]
+    if n_clicks > 0:
         columns.insert(0, "species")
         data = pd.DataFrame(data=[[val for val in vals]], columns=columns)
         columns.pop(0)
 
         return dcc.send_data_frame(data.to_csv, "neuer_Pinguin.csv")
-    except:
-        return Dash.no_update
+
+
 
 #Diese Funktion verwaltet das Aktualisieren des Modells
 def akt(erg, *vals):
     try:
-        daten = pd.DataFrame(data=[[val for val in vals]], columns=columns)
+        data = [vals]
+        daten = pd.DataFrame(data=data, columns=columns)
         daten.drop(columns='Beobachter', inplace=True)
         m.modell_aktualisierung(erg, daten)
         msg = "Das Modell wurde um den eingegebenen Pinguin erweitert."
@@ -372,6 +399,9 @@ def modell_wechseln(filename):
 if __name__ == '__main__':
     #Dashboard
     app.run(debug=True)
+
+    #daten.drop(columns='Beobachter', inplace=True)
+    #print(berechnung("Dream",27,10,57,5000,"male",2026,"Jorgo") )
 
     #Genauigkeitstest der verschiedenen Modelle testen
     #M = Modell()
